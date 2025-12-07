@@ -10,13 +10,11 @@ import os
 import logging
 import time
 
-# 设置日志
 logger = logging.getLogger("LMS_Controller")
 
 class LMS_CLI_Handler:
-    """
-    处理与 LM Studio CLI (lms) 的交互
-    """
+    # ... (保持之前的 CLI Handler 代码不变，为了节省篇幅这里省略，请保留原有的这部分) ...
+    # 只需要替换下方的 LMS_VisionController 类
     _model_cache = None
     _last_cache_time = 0
     CACHE_TTL = 10 
@@ -60,7 +58,6 @@ class LMS_CLI_Handler:
 
     @classmethod
     def get_models(cls):
-        """获取并清洗模型列表"""
         if cls._model_cache and (time.time() - cls._last_cache_time < cls.CACHE_TTL):
             return cls._model_cache
 
@@ -71,69 +68,53 @@ class LMS_CLI_Handler:
 
         models = []
         lines = stdout.strip().splitlines()
-        
         BLACKLIST = {
             "size", "ram", "type", "architecture", "model", "path", 
             "llm", "llms", "embedding", "embeddings", "vision", "image",
             "name", "loading", "fetching", "downloaded", "bytes", "date",
-            "publisher", "repository", "you", "have", "features"
+            "publisher", "repository", "you", "have", "features", "primary", "gpu"
         }
-
         for line in lines:
             line = line.strip()
             if not line: continue
             if all(c in "-=*" for c in line): continue
-
             parts = line.split()
             if not parts: continue
-            
             raw_name = parts[0]
             raw_lower = raw_name.lower()
-
             if raw_lower.rstrip(":") in BLACKLIST: continue
             if raw_lower[0].isdigit() and ("gb" in raw_lower or "mb" in raw_lower): continue
-
             clean_name = raw_name
-            if "/" in clean_name:
-                clean_name = clean_name.split("/")[-1]
-            if clean_name.lower().endswith(".gguf"):
-                clean_name = clean_name[:-5]
-
+            if "/" in clean_name: clean_name = clean_name.split("/")[-1]
+            if clean_name.lower().endswith(".gguf"): clean_name = clean_name[:-5]
             if len(clean_name) < 2: continue
             models.append(clean_name)
-
         unique_models = sorted(list(set(models)))
-        if not unique_models:
-            unique_models = ["No models found"]
-
+        if not unique_models: unique_models = ["No models found"]
         cls._model_cache = unique_models
         cls._last_cache_time = time.time()
         return unique_models
 
     @classmethod
-    def load_model(cls, model_name, identifier):
-        """加载模型"""
-        logger.info(f"LMS: Loading '{model_name}'...")
-        args = ["load", model_name, "--identifier", identifier, "--gpu", "max"]
-        success, stdout, stderr = cls.run_cmd(args, timeout=120)
-        
-        if not success:
-            logger.error(f"LMS Load Error: {stderr}")
+    def load_model(cls, model_name, identifier, gpu_ratio=1.0, context_length=2048):
+        logger.info(f"LMS: Loading '{model_name}' (GPU: {gpu_ratio}, Ctx: {context_length})...")
+        gpu_arg = "max" if gpu_ratio >= 1.0 else str(gpu_ratio)
+        if gpu_ratio <= 0: gpu_arg = "0"
+        args = ["load", model_name, "--identifier", identifier, "--gpu", gpu_arg, "--context-length", str(context_length)]
+        success, stdout, stderr = cls.run_cmd(args, timeout=180)
+        if not success: logger.error(f"LMS Load Error: {stderr}")
         return success
 
     @classmethod
     def unload_all(cls):
-        """强力卸载所有模型"""
-        logger.info("LMS: Unloading ALL models (Clean slate)...")
         success, _, stderr = cls.run_cmd(["unload", "--all"], timeout=20)
         return success
 
 
 class LMS_VisionController:
-    """
-    ComfyUI 节点
-    """
     _current_loaded_model = None 
+    _current_gpu_ratio = 1.0
+    _current_context = 2048
 
     def __init__(self):
         self.cli = LMS_CLI_Handler()
@@ -143,22 +124,25 @@ class LMS_VisionController:
         model_list = LMS_CLI_Handler.get_models()
         return {
             "required": {
-                "image": ("IMAGE",),
-                "user_prompt": ("STRING", {"multiline": True, "default": "Describe this image in detail."}),
+                # [修改点1] image 已经移到了 optional，这里只保留其他必填项
+                "user_prompt": ("STRING", {"multiline": True, "default": "Describe the content of the images/video."}),
                 "model_name": (model_list,),
+                "max_total_images": ("INT", {"default": 8, "min": 1, "max": 64}),
+                "gpu_offload": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.05}),
+                "context_length": ("INT", {"default": 8192, "min": 512, "max": 32768}),
+                "max_image_side": ("INT", {"default": 1024, "min": 256, "max": 4096}),
                 "max_tokens": ("INT", {"default": 1024, "min": 1, "max": 32768}),
                 "temperature": ("FLOAT", {"default": 0.6, "min": 0.0, "max": 2.0, "step": 0.05}),
-                "top_p": ("FLOAT", {"default": 0.9, "min": 0.0, "max": 1.0, "step": 0.05}),
-                "top_k": ("INT", {"default": 40, "min": 0, "max": 100}),
-                "repetition_penalty": ("FLOAT", {"default": 1.1, "min": 0.0, "max": 2.0, "step": 0.01}),
-                "frequency_penalty": ("FLOAT", {"default": 0.3, "min": -2.0, "max": 2.0, "step": 0.1}),
-                "presence_penalty": ("FLOAT", {"default": 0.0, "min": -2.0, "max": 2.0, "step": 0.1}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
-                # 只有 unload_after，移除了 reload_model
-                "unload_after": ("BOOLEAN", {"default": False, "label_on": "Unload", "label_off": "Keep Loaded"}),
+                "unload_after": ("BOOLEAN", {"default": False}),
             },
             "optional": {
-                "system_prompt": ("STRING", {"multiline": True, "default": "You are a helpful AI assistant capable of vision analysis."}),
+                # [修改点2] image 现在是可选的了！
+                "image": ("IMAGE",),
+                "image_2": ("IMAGE",),
+                "image_3": ("IMAGE",),
+                "video_frames": ("IMAGE",), 
+                "system_prompt": ("STRING", {"multiline": True, "default": "You are a helpful AI assistant."}),
                 "base_url": ("STRING", {"default": "http://localhost:1234/v1"}),
             }
         }
@@ -168,83 +152,97 @@ class LMS_VisionController:
     FUNCTION = "generate_content"
     CATEGORY = "LM Studio/VLM"
 
-    def tensor_to_base64(self, tensor):
+    def process_image(self, tensor_img, max_side):
         try:
-            img_np = (tensor[0].cpu().numpy() * 255).clip(0, 255).astype(np.uint8)
+            img_np = (tensor_img.cpu().numpy() * 255).clip(0, 255).astype(np.uint8)
             pil_img = Image.fromarray(img_np)
-            if pil_img.mode != 'RGB':
-                pil_img = pil_img.convert('RGB')
+            if pil_img.mode != 'RGB': pil_img = pil_img.convert('RGB')
+            width, height = pil_img.size
+            if max(width, height) > max_side:
+                ratio = max_side / max(width, height)
+                new_size = (int(width * ratio), int(height * ratio))
+                pil_img = pil_img.resize(new_size, Image.Resampling.LANCZOS)
             buffer = io.BytesIO()
-            pil_img.save(buffer, format="JPEG", quality=90)
+            pil_img.save(buffer, format="JPEG", quality=85)
             return base64.b64encode(buffer.getvalue()).decode('utf-8')
         except Exception as e:
-            logger.error(f"Image conversion error: {e}")
+            logger.error(f"Image processing error: {e}")
             return None
 
-    # [修复] 这里的参数列表即使包含 INPUT_TYPES 里没有的参数也没关系
-    # 添加 **kwargs 吸收旧节点发送的多余参数，防止错位
-    def generate_content(self, image, user_prompt, model_name, 
-                         max_tokens, temperature, top_p, top_k, repetition_penalty, frequency_penalty, presence_penalty, 
-                         seed, unload_after, system_prompt="", base_url="http://localhost:1234/v1", 
-                         reload_model=None, **kwargs):
+    # [修改点3] image 现在的默认值是 None
+    def generate_content(self, user_prompt, model_name, max_total_images, gpu_offload, context_length, max_image_side,
+                         max_tokens, temperature, seed, unload_after, 
+                         image=None, image_2=None, image_3=None, video_frames=None,
+                         system_prompt="", base_url="http://localhost:1234/v1", **kwargs):
         
-        # 安全检查：如果 base_url 被错误赋值成了 prompt 文本，强制修正
-        if "http" not in base_url and "localhost" not in base_url and len(base_url) > 50:
-             logger.warning("Detected argument mismatch (base_url received prompt text). Using default URL.")
-             base_url = "http://localhost:1234/v1"
-
+        if "http" not in base_url: base_url = "http://localhost:1234/v1"
         IDENTIFIER = "comfy_vlm_worker"
         
-        # --- 自动模型管理逻辑 ---
-        # 如果模型名发生了变化，或者当前没有任何记录
-        if LMS_VisionController._current_loaded_model != model_name:
-            logger.info(f"Auto-switch: '{LMS_VisionController._current_loaded_model}' -> '{model_name}'")
-            
-            if "Error" in model_name or "No models" in model_name:
-                return ("Error: Invalid model selection.",)
+        # 1. 收集图片 (增加了对 None 的判断)
+        all_tensors = []
+        if image is not None:
+            for i in range(image.shape[0]): all_tensors.append(image[i])
+        if image_2 is not None:
+            for i in range(image_2.shape[0]): all_tensors.append(image_2[i])
+        if image_3 is not None:
+            for i in range(image_3.shape[0]): all_tensors.append(image_3[i])
+        if video_frames is not None:
+            for i in range(video_frames.shape[0]): all_tensors.append(video_frames[i])
+        
+        # 2. 空值检查 (防止用户什么都没连)
+        total_count = len(all_tensors)
+        if total_count == 0:
+            return ("Error: No images or video frames provided. Please connect at least one input.",)
+        
+        # 3. 抽帧
+        final_tensors = []
+        if total_count > max_total_images:
+            indices = np.linspace(0, total_count - 1, max_total_images, dtype=int)
+            final_tensors = [all_tensors[i] for i in indices]
+        else:
+            final_tensors = all_tensors
 
-            # 1. 卸载所有
+        # 4. 转 Base64
+        image_content_list = []
+        for tensor in final_tensors:
+            b64 = self.process_image(tensor, max_image_side)
+            if b64:
+                image_content_list.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/jpeg;base64,{b64}"}
+                })
+
+        if not image_content_list: return ("Error: No valid images processed.",)
+
+        # 5. 加载模型
+        needs_reload = (
+            LMS_VisionController._current_loaded_model != model_name or
+            abs(LMS_VisionController._current_gpu_ratio - gpu_offload) > 0.01 or 
+            LMS_VisionController._current_context != context_length
+        )
+
+        if needs_reload:
             self.cli.unload_all()
-            time.sleep(1.0) 
-
-            # 2. 加载新模型
-            success = self.cli.load_model(model_name, IDENTIFIER)
-            
+            time.sleep(1.0)
+            success = self.cli.load_model(model_name, IDENTIFIER, gpu_ratio=gpu_offload, context_length=context_length)
             if success:
                 LMS_VisionController._current_loaded_model = model_name
+                LMS_VisionController._current_gpu_ratio = gpu_offload
+                LMS_VisionController._current_context = context_length
                 time.sleep(2.0)
             else:
                 return (f"Error: Failed to load model '{model_name}'.",)
-        else:
-            logger.info(f"Model '{model_name}' ready. Skipping load.")
 
-        # --- 图像处理 ---
-        img_b64 = self.tensor_to_base64(image)
-        if not img_b64:
-            return ("Error: Image conversion failed.",)
-
-        # --- API 请求 ---
-        headers = {"Content-Type": "application/json"}
-        
+        # 6. 发送请求
+        user_content = [{"type": "text", "text": user_prompt}] + image_content_list
         payload = {
             "model": IDENTIFIER,
             "messages": [
                 {"role": "system", "content": system_prompt},
-                {
-                    "role": "user", 
-                    "content": [
-                        {"type": "text", "text": user_prompt},
-                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}}
-                    ]
-                }
+                {"role": "user", "content": user_content}
             ],
             "temperature": temperature,
             "max_tokens": max_tokens,
-            "top_p": top_p,
-            "top_k": top_k,
-            "frequency_penalty": frequency_penalty,
-            "presence_penalty": presence_penalty,
-            "repetition_penalty": repetition_penalty,
             "seed": seed,
             "stream": False
         }
@@ -252,34 +250,30 @@ class LMS_VisionController:
         content = ""
         try:
             api_endpoint = f"{base_url.rstrip('/')}/chat/completions"
-            logger.info(f"Sending request to {api_endpoint}...")
-            
-            response = requests.post(api_endpoint, headers=headers, json=payload, timeout=300)
-            
+            response = requests.post(api_endpoint, headers={"Content-Type": "application/json"}, json=payload, timeout=300)
             if response.status_code == 200:
                 result = response.json()
-                content = result['choices'][0]['message']['content']
+                if 'choices' in result and len(result['choices']) > 0:
+                    content = result['choices'][0]['message']['content']
+                else:
+                    content = "Error: Empty response."
             else:
                 content = f"API Error {response.status_code}: {response.text}"
                 logger.error(content)
-
         except Exception as e:
-            content = f"Connection Error: {str(e)}. Is LM Studio running and server started?"
+            content = f"Connection Error: {str(e)}"
             logger.error(content)
 
-        # --- 运行后处理 ---
         if unload_after:
             self.cli.unload_all()
             LMS_VisionController._current_loaded_model = None
-            logger.info("Auto-unload executed.")
 
         return (content,)
 
-# 注册节点
 NODE_CLASS_MAPPINGS = {
     "LMS_VisionController": LMS_VisionController
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "LMS_VisionController": "LM Studio Vision Controller"
+    "LMS_VisionController": "LM Studio VLM (Final Fixed)"
 }
