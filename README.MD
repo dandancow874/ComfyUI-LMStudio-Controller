@@ -1,107 +1,199 @@
-# ComfyUI-LMStudio-Controller
+ComfyUI-LMStudio-Controller
 
-[English](#english) | [中文](#chinese)
+English | 中文
 
 <a name="english"></a>
-## 🇬🇧 English
+🇬🇧 English
 
-A Custom Node for ComfyUI that integrates **LM Studio**'s CLI (`lms`) to perform Vision Language Model (VLM) inference locally. 
+A powerful Custom Node for ComfyUI that integrates LM Studio's CLI (lms) to perform Vision Language Model (VLM) inference locally.
 
-It allows you to use local models (like Qwen-VL, LLaVA, etc.) to analyze images directly within ComfyUI workflows.
+It upgrades your ComfyUI with the ability to "see" images and videos using local models (like Qwen2-VL, LLaVA, etc.), with advanced memory management to prevent OOM errors on consumer GPUs.
+✨ Key Features
 
-### ✨ Features
+    🎬 Video Analysis Support: Seamlessly integrates with VideoHelperSuite (VHS) to analyze video frames.
 
-*   **Smart Model Management**: automatically unloads the previous model and loads the new one when you switch models in the dropdown.
-*   **VRAM Friendly**: Includes an "Unload After" option to free up GPU memory immediately after generation.
-*   **Full Parameter Control**: Supports Temperature, Top P, Top K, Repetition Penalty, etc.
-*   **CLI Integration**: Automatically fetches your downloaded models from LM Studio using `lms ls`.
-*   **Clean UI**: Filters out system text from the model list for a clean selection experience.
+    🖼️ Multi-Input Interface: Supports main image, auxiliary images (Image 2/3), and video frame inputs simultaneously.
 
-### ⚙️ Prerequisites (Important)
+    🛡️ Anti-OOM Protection:
 
-1.  **Install LM Studio**: Download from [lmstudio.ai](https://lmstudio.ai/).
-2.  **Install the CLI Tool**: 
-    *   Open LM Studio.
-    *   Go to the **"Developer"** tab (or Settings).
-    *   Click **"Install lms to PATH"** (or ensure `lms` command works in your terminal).
-3.  **Start Local Server**:
-    *   In LM Studio, go to the **"Local Server"** tab.
-    *   **Start the Server** (Default port: 1234).
-    *   *Note: This node uses the CLI to load models, but the API request is sent to the local server port.*
+        Smart Downsampling: Automatically downsamples input frames to max_total_images limit to fit context window.
 
-### 📥 Installation
+        Resolution Control: Resizes large images/video frames (max_image_side) before sending to VLM.
 
-1.  Navigate to your ComfyUI custom nodes directory:
-    ```bash
-    cd ComfyUI/custom_nodes/
-    ```
-2.  Clone this repository:
-    ```bash
-    git clone https://github.com/dandancow874/ComfyUI-LMStudio-Controller.git
-    ```
-3.  Install dependencies:
-    ```bash
+        GPU Offload Control: Manually adjust how many model layers are loaded to VRAM (0.0 - 1.0) to prevent system crashes.
+
+        Context Length Control: Set explicit context limits to manage VRAM usage.
+
+    🚀 Smart Model Management: Automatically unloads the previous model and loads the new one only when parameters change.
+
+    CLI Integration: Automatically fetches your downloaded models from LM Studio using lms ls.
+
+⚙️ Prerequisites (Important)
+
+    Install LM Studio: Download from lmstudio.ai.
+
+    Install the CLI Tool:
+
+        Open LM Studio.
+
+        Go to the "Developer" tab (or Settings).
+
+        Click "Install lms to PATH" (Verify by running lms in your terminal).
+
+    Start Local Server:
+
+        In LM Studio, go to the "Local Server" tab.
+
+        Start the Server (Default port: 1234).
+
+        Note: This node uses the CLI to load models, but the API request is sent to the local server port.
+
+📥 Installation
+
+    Navigate to your ComfyUI custom nodes directory:
+    code Bash
+
+    
+cd ComfyUI/custom_nodes/
+
+  
+
+Clone this repository:
+code Bash
+
+    
+git clone https://github.com/dandancow874/ComfyUI-LMStudio-Controller.git
+
+  
+
+Install dependencies:
+code Bash
+
+        
     pip install -r requirements.txt
-    ```
-4.  Restart ComfyUI.
 
-### 🚀 Usage
+      
 
-1.  Search for the node **"LM Studio Vision Controller"**.
-2.  Connect an image and a prompt.
-3.  **Model Name**: Select a vision model from the dropdown (list is fetched from your LM Studio downloads).
-4.  **Unload After**: Check this if you want to release VRAM immediately after the task.
+    Restart ComfyUI.
 
----
+📖 Usage Guide
+1. Basic Image Analysis
+
+Simply connect your Load Image node to the image (or image_2/image_3) input.
+2. Video Analysis Workflow (Recommended)
+
+To analyze videos, it is recommended to use the VideoHelperSuite (VHS) nodes.
+
+    Add a Load Video (Upload) node (from VHS).
+
+    Set force_size to Custom (e.g., 512x512 or 768x768) to save VRAM.
+
+    Set frame_load_cap to reasonable limit (e.g., 32 or 64).
+
+    Connect the IMAGE output of VHS to the video_frames input of this node.
+
+    The node will automatically sample frames based on your max_total_images setting.
+
+🛠️ Recommended Settings
+Hardware/Model	GPU Offload	Context Length	Max Image Side	Notes
+8B Models (e.g., Qwen2-VL-7B)	1.0 (Max)	16384	768 or 1024	Fast, handles high-res images well.
+30B+ Models (Low VRAM)	0.6 - 0.8	4096	512	Prevents blue screen/OOM .
+30B+ Models (24GB+ VRAM)	0.8 - 1.0	8192	768	Balance between quality and memory.
 
 <a name="chinese"></a>
-## 🇨🇳 中文说明
+🇨🇳 中文说明
 
-这是一个 ComfyUI 自定义节点，通过集成 **LM Studio** 的命令行工具 (`lms`)，实现本地视觉大模型 (VLM) 的推理。
+这是一个功能强大的 ComfyUI 自定义节点，通过集成 LM Studio 的命令行工具 (lms)，实现本地视觉大模型 (VLM) 的推理。
 
-它允许你在 ComfyUI 工作流中直接调用本地模型（如 Qwen-VL, LLaVA 等）来识别和描述图像。
+它不仅让 ComfyUI 能够“看懂”图片和视频（支持 Qwen2-VL, LLaVA 等），还引入了高级的显存管理机制，防止在消费级显卡上运行大参数模型时发生爆显存（OOM）或蓝屏。
+✨ 主要功能
 
-### ✨ 主要功能
+    🎬 视频理解支持：完美配合 VideoHelperSuite (VHS) 节点，接收视频流并进行反推/分析。
 
-*   **智能模型管理**：在下拉菜单切换模型时，自动检测并卸载旧模型，加载新模型。
-*   **显存友好**：提供 "Unload After"（运行后卸载）选项，生成完成后立即释放显存。
-*   **参数全掌控**：支持调节 Temperature, Top P, Top K, 重复惩罚 (Repetition Penalty) 等参数。
-*   **CLI 深度集成**：通过 `lms ls` 自动获取你本地下载的所有模型列表。
-*   **列表自动清洗**：自动过滤掉无关的系统文本，只显示清晰的模型名称。
+    🖼️ 多模态输入接口：支持主图、两张辅助图 (Image 2/3) 以及视频帧 (Video Frames) 同时输入。
 
-### ⚙️ 前置要求 (重要)
+    🛡️ 防爆显存机制 (核心功能)：
 
-1.  **安装 LM Studio**: 请前往 [lmstudio.ai](https://lmstudio.ai/) 下载。
-2.  **启用 CLI 工具**: 
-    *   打开 LM Studio。
-    *   进入 **"Developer" (开发者)** 选项卡（或设置页面）。
-    *   点击 **"Install lms to PATH"**（确保在终端输入 `lms` 能看到输出）。
-3.  **启动本地服务 (Local Server)**:
-    *   在 LM Studio 中，点击左侧的 **"Local Server"** 图标。
-    *   点击 **"Start Server"** (默认端口 1234)。
-    *   *注意：本节点使用 CLI 加载模型，但通过 API 端口发送图像请求，所以服务必须处于开启状态。*
+        智能抽帧：无论输入多少视频帧，自动根据 max_total_images 进行均匀采样，防止 Token 溢出。
 
-### 📥 安装方法
+        分辨率控制：通过 max_image_side 限制输入给模型的图片尺寸，大幅降低显存占用。
 
-1.  进入你的 ComfyUI 自定义节点目录：
-    ```bash
-    cd ComfyUI/custom_nodes/
-    ```
-2.  克隆本项目：
-    ```bash
-    git clone https://github.com/dandancow874/ComfyUI-LMStudio-Controller.git
-    ```
-3.  安装依赖：
-    ```bash
+        GPU Offload 控制：支持手动调节模型加载到显存的比例 (0.0 - 1.0)。30B 大模型建议设为 0.8 以防蓝屏。
+
+        Context Length 控制：显式限制模型的上下文窗口大小。
+
+    🚀 智能加载：仅当模型名称或关键显存参数变化时才触发重载。
+
+    列表自动清洗：通过 lms ls 自动获取模型列表，并过滤掉系统杂乱文本。
+
+⚙️ 前置要求 (重要)
+
+    安装 LM Studio: 请前往 lmstudio.ai 下载。
+
+    启用 CLI 工具:
+
+        打开 LM Studio。
+
+        进入 "Developer" (开发者) 选项卡（或设置页面）。
+
+        点击 "Install lms to PATH"（确保在终端输入 lms 能看到输出）。
+
+    启动本地服务 (Local Server):
+
+        在 LM Studio 中，点击左侧的 "Local Server" 图标。
+
+        点击 "Start Server" (默认端口 1234)。
+
+        注意：本节点依赖 Local Server 接收图像 API 请求。
+
+📥 安装方法
+
+    进入你的 ComfyUI 自定义节点目录：
+    code Bash
+
+    
+cd ComfyUI/custom_nodes/
+
+  
+
+克隆本项目：
+code Bash
+
+    
+git clone https://github.com/dandancow874/ComfyUI-LMStudio-Controller.git
+
+  
+
+安装依赖：
+code Bash
+
+        
     pip install -r requirements.txt
-    ```
-4.  重启 ComfyUI。
 
-### 🚀 使用指南
+      
 
-1.  在 ComfyUI 中搜索节点 **"LM Studio Vision Controller"**。
-2.  连接图像 (Image) 和提示词 (Prompt)。
-3.  **Model Name**: 从下拉菜单中选择一个视觉模型（列表会自动同步 LM Studio 中已下载的模型）。
-4.  **Unload After**: 如果你的显存紧张，建议开启此选项，它会在任务完成后自动卸载模型。
+    重启 ComfyUI。
 
----
+📖 使用指南
+1. 基础图片分析
+
+将 Load Image 节点连接到本节点的 image (或 image_2/image_3) 端口即可。
+2. 视频反推工作流 (推荐)
+
+建议配合 VideoHelperSuite (VHS) 插件使用：
+
+    添加 Load Video (Upload) 节点 (VHS)。
+
+    关键设置：将 force_size 设为 Custom (例如 512x512 或 768x768)，这一步最省显存。
+
+    将 frame_load_cap 设为适当值 (如 32 或 64)。
+
+    将 VHS 的 IMAGE 输出连接到本节点的 video_frames 端口。
+
+    本节点会自动根据你设置的 max_total_images (如 8) 对视频进行均匀抽帧。
+
+🛠️ 推荐参数设置
+硬件/模型情况	GPU Offload	Context Length	Max Image Side	说明
+8B 小模型 (如 Qwen2-VL-7B)	1.0 (拉满)	16384	768 或 1024	速度快，可处理高清图，显存无压力。
+30B+ 大模型 (显存紧张)	0.6 - 0.8	4096	512	防止蓝屏的关键配置。
+30B+ 大模型 (24G显存)	0.8 - 1.0	8192	768	画质与显存的平衡点。
